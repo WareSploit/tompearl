@@ -1,12 +1,10 @@
-=--[[
+--[[
 	Tom Pearl Menu
-	Version: 1.4.0 — MOBILE FIX UPDATE
-	Fixes:
-		- Backdrop no longer blocks character movement / camera
-		- Window no longer closes when dragging
-		- Backdrop click-to-close removed (safe on mobile)
-		- Drag movement threshold prevents accidental button clicks
-		- Close button no longer fires when drag started on it
+	Version: 1.4.1 — NO ANIMATION UPDATE
+	- No slide animation on open/close (instant)
+	- No backdrop (does not block camera/movement)
+	- Drag threshold prevents accidental button clicks
+	- Mobile + PC
 ]]
 
 local Players          = game:GetService("Players")
@@ -41,7 +39,6 @@ local Theme = {
 	Success     = Color3.fromRGB(80, 200, 120),
 	Warning     = Color3.fromRGB(240, 190, 80),
 	Error       = Color3.fromRGB(230, 80, 100),
-	Backdrop    = Color3.fromRGB(0, 0, 0),
 }
 
 local Font = {
@@ -105,20 +102,6 @@ local function playSound(n)
 	if s then s.TimePosition = 0; s:Play() end
 end
 
--- BACKDROP (visual only, does NOT block input)
-local Backdrop = new("Frame", {
-	Name = "Backdrop",
-	BackgroundColor3 = Theme.Backdrop,
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	Size = UDim2.new(1, 0, 1, 0),
-	Active = false,
-	Visible = false,
-	ZIndex = 40,
-	Parent = ScreenGui,
-})
--- Note: Active = false → touches/clicks pass through → character can move + camera works
-
 -- OPEN BUTTON
 local OpenButton = new("ImageButton", {
 	Name = "OpenButton",
@@ -160,7 +143,6 @@ TomPearl.SoundConfig = SoundConfig
 TomPearl.Windows = {}
 TomPearl.IsMobile = IS_MOBILE
 TomPearl.HasFile = HAS_FILE
-TomPearl.Backdrop = Backdrop
 
 function TomPearl:PlaySound(name) playSound(name) end
 function TomPearl:SetSoundEnabled(state) SoundConfig.Enabled = state == true end
@@ -216,14 +198,10 @@ end
 
 function TomPearl:CreateWindow(cfg)
 	cfg = cfg or {}
-	local name        = cfg.Name or "Tom Pearl Menu"
-	local icon        = cfg.Icon or "rbxassetid://132217368448431"
-	local size        = cfg.Size or UDim2.new(0, IS_MOBILE and 320 or 380, 0, IS_MOBILE and 400 or 440)
-	local toggleKey   = cfg.ToggleKey or Enum.KeyCode.RightControl
-	local playWelcome = cfg.PlayWelcome ~= false
-	local useBackdrop = cfg.Backdrop ~= false
-	local openPos     = UDim2.new(0.5, 0, 0.5, 0)
-	local closedPos   = UDim2.new(0.5, 0, 1.6, 0)
+	local name      = cfg.Name or "Tom Pearl Menu"
+	local icon      = cfg.Icon or "rbxassetid://132217368448431"
+	local size      = cfg.Size or UDim2.new(0, IS_MOBILE and 320 or 380, 0, IS_MOBILE and 400 or 440)
+	local toggleKey = cfg.ToggleKey or Enum.KeyCode.RightControl
 
 	local window = { Tabs = {}, ActiveTab = nil, Flags = {} }
 
@@ -237,13 +215,11 @@ function TomPearl:CreateWindow(cfg)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		ClipsDescendants = true,
 		Size = size,
-		Position = closedPos,
+		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Parent = ScreenGui,
 	})
 	corner(10, MainFrame)
 	stroke(Theme.Border, 1, MainFrame)
-
-	local MainScale = new("UIScale", { Scale = 0.95 }, MainFrame)
 
 	local Title = new("TextLabel", {
 		Name = "Title",
@@ -336,46 +312,21 @@ function TomPearl:CreateWindow(cfg)
 
 	local tabOrder = 0
 	local isOpen = false
-	local isAnimating = false
 	local minimized = false
 	local savedSize = size
 
 	local function openFrame()
-		if isOpen or isAnimating then return end
-		isAnimating = true
+		if isOpen then return end
 		playSound("Welcome")
-		MainFrame.Rotation = 0
-		MainFrame.Position = closedPos
 		MainFrame.Visible = true
-		MainScale.Scale = 0.95
-		if useBackdrop then
-			Backdrop.Visible = true
-			tw(Backdrop, 0.35, { BackgroundTransparency = 0.55 })
-		end
-		tw(MainFrame, 0.55, { Position = openPos }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-		tw(MainScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		task.wait(0.55)
-		MainFrame.Position = openPos
 		isOpen = true
-		isAnimating = false
 	end
 
 	local function closeFrame()
-		if not isOpen or isAnimating then return end
-		isAnimating = true
+		if not isOpen then return end
 		playSound("Click")
-		if useBackdrop then
-			tw(Backdrop, 0.3, { BackgroundTransparency = 1 })
-			task.delay(0.3, function() if not isOpen then Backdrop.Visible = false end end)
-		end
-		tw(MainFrame, 0.45, { Position = closedPos }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-		tw(MainScale, 0.35, { Scale = 0.95 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		task.wait(0.45)
 		MainFrame.Visible = false
-		MainFrame.Position = closedPos
-		MainScale.Scale = 1
 		isOpen = false
-		isAnimating = false
 	end
 
 	local function toggleFrame()
@@ -421,43 +372,33 @@ function TomPearl:CreateWindow(cfg)
 		if input.KeyCode == Enum.KeyCode.Escape and isOpen then closeFrame() end
 	end)
 
-	-- DRAG (fixed: threshold + skip close/min area, no accidental close)
-	local dragging, dragStart, startPos, dragMoved, dragOrigin
+	-- DRAG (threshold + skip close/min area)
+	local dragging, dragStart, startPos
 
 	MainFrame.InputBegan:Connect(function(input)
-		if isAnimating then return end
 		if not isPress(input) then return end
 		if pointInGui(CloseButton, input.Position) then return end
 		if pointInGui(MinBtn, input.Position) then return end
 		dragging = true
-		dragMoved = false
 		dragStart = input.Position
 		startPos = MainFrame.Position
-		dragOrigin = input.Position
 	end)
 
 	UserInputService.InputChanged:Connect(function(input)
 		if not dragging then return end
 		if not isMove(input) then return end
-		local total = (input.Position - dragOrigin).Magnitude
-		if total > 4 then dragMoved = true end
 		local d = input.Position - dragStart
 		MainFrame.Position = UDim2.new(
 			startPos.X.Scale, startPos.X.Offset + d.X,
 			startPos.Y.Scale, startPos.Y.Offset + d.Y
 		)
-		openPos = MainFrame.Position
 	end)
 
 	UserInputService.InputEnded:Connect(function(input)
-		if isPress(input) then
-			dragging = false
-			task.wait(0.05)
-			dragMoved = false
-		end
+		if isPress(input) then dragging = false end
 	end)
 
-	-- RESIZE HANDLE
+	-- RESIZE
 	local ResizeHandle = new("TextButton", {
 		Name = "ResizeHandle",
 		BackgroundColor3 = Theme.Border,
@@ -491,6 +432,7 @@ function TomPearl:CreateWindow(cfg)
 		if isPress(input) then resizing = false end
 	end)
 
+	-- TABS
 	function window:CreateTab(tabName)
 		tabOrder = tabOrder + 1
 		local idx = tabOrder
@@ -534,12 +476,12 @@ function TomPearl:CreateWindow(cfg)
 		local function activate()
 			if window.ActiveTab and window.ActiveTab.Button then
 				local old = window.ActiveTab
-				tw(old.Button, 0.15, { BackgroundColor3 = Theme.Surface })
+				old.Button.BackgroundColor3 = Theme.Surface
 				old.Button.TextColor3 = Theme.TextDim
 				old.Page.Visible = false
 			end
 			window.ActiveTab = tab
-			tw(btn, 0.15, { BackgroundColor3 = Theme.AccentDark })
+			btn.BackgroundColor3 = Theme.AccentDark
 			btn.TextColor3 = Theme.Text
 			page.Visible = true
 			playSound("Click")
@@ -1301,13 +1243,13 @@ function TomPearl:CreateWindow(cfg)
 
 	task.delay(0.1, function()
 		openFrame()
-		if playWelcome then
-			TomPearl:Notify({ Title = "Tom Pearl Menu", Content = "v1.4.0 loaded", Duration = 3, Type = "success" })
+		if cfg.PlayWelcome ~= false then
+			TomPearl:Notify({ Title = "Tom Pearl Menu", Content = "v1.4.1 loaded", Duration = 3, Type = "success" })
 		end
 	end)
 
 	return window
 end
 
-print("[TomPearl] main.lua v1.4.0 loaded | mobile=" .. tostring(IS_MOBILE) .. " | file=" .. tostring(HAS_FILE))
+print("[TomPearl] main.lua v1.4.1 loaded | mobile=" .. tostring(IS_MOBILE) .. " | file=" .. tostring(HAS_FILE))
 return TomPearl
