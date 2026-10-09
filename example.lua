@@ -1,12 +1,8 @@
 --[[
-	Tom Pearl Menu — Example
-	Вставь в экзекьютор и Execute.
-	Библиотека подгружается с GitHub raw.
+	Tom Pearl Menu — Example v1.3.0
+	Auto-opens on load with slide-up animation.
+	Load: loadstring(game:HttpGet("https://raw.githubusercontent.com/WareSploit/tompearl/main/example.lua"))()
 ]]
-
--- ======================
--- LOAD LIBRARY
--- ======================
 
 local LIB_URL = "https://raw.githubusercontent.com/WareSploit/tompearl/main/main.lua"
 
@@ -19,15 +15,19 @@ if not ok or not TomPearl then
 	return
 end
 
+local IS_MOBILE = TomPearl.IsMobile
+
 -- ======================
--- CREATE WINDOW
+-- WINDOW
 -- ======================
 
 local Window = TomPearl:CreateWindow({
 	Name = "Tom Pearl Menu",
-	Icon = "rbxassetid://5607058200",
-	Size = UDim2.new(0, 400, 0, 440),
+	Icon = "rbxassetid://132217368448431",
+	Size = IS_MOBILE and UDim2.new(0, 320, 0, 420) or UDim2.new(0, 400, 0, 460),
 	ToggleKey = Enum.KeyCode.RightControl,
+	PlayWelcome = true,
+	Backdrop = true,
 })
 
 -- ======================
@@ -35,40 +35,103 @@ local Window = TomPearl:CreateWindow({
 -- ======================
 
 local MainTab = Window:CreateTab("Main")
-
--- Section: Combat
 local Combat = MainTab:CreateSection("Combat")
 
 Combat:CreateToggle("Auto Parry", false, function(state)
+	Window.Flags.AutoParry = state
 	print("[Example] Auto Parry:", state)
-	-- здесь твоя логика auto parry
 end)
 
 Combat:CreateToggle("Auto Block", false, function(state)
+	Window.Flags.AutoBlock = state
 	print("[Example] Auto Block:", state)
 end)
 
-Combat:CreateSlider("Reach", 1, 50, 9, function(value)
-	print("[Example] Reach:", value)
+Combat:CreateToggle("Hitbox Expand", false, function(state)
+	Window.Flags.HitboxExpand = state
 end)
 
-Combat:CreateSlider("Hitbox Size", 0, 20, 5, function(value)
-	print("[Example] Hitbox:", value)
+Combat:CreateSlider("Reach", 1, 50, 9, function(v)
+	Window.Flags.Reach = v
 end)
 
-Combat:CreateDropdown("Mode", {"Parry", "Dodge", "Hybrid", "Aggressive"}, "Parry", function(selected)
-	print("[Example] Mode:", selected)
+Combat:CreateSlider("Hitbox Size", 0, 20, 5, function(v)
+	Window.Flags.HitboxSize = v
 end)
 
--- Section: Actions
-local Actions = MainTab:CreateSection("Actions")
-
-Actions:CreateButton("Refresh Target", function()
-	print("[Example] Refresh clicked")
+Combat:CreateDropdown("Mode", {
+	"Parry", "Dodge", "Hybrid", "Aggressive",
+	"Defensive", "Custom", "Random", "Adaptive",
+}, "Parry", function(v)
+	Window.Flags.Mode = v
 end)
 
-Actions:CreateButton("Panic (Disable All)", function()
-	print("[Example] Panic")
+Combat:CreateColorPicker("Hitbox Color", Color3.fromRGB(255, 80, 80), function(c)
+	Window.Flags.HitboxColor = { c.R, c.G, c.B }
+end)
+
+-- ======================
+-- TAB: MOVEMENT
+-- ======================
+
+local MoveTab = Window:CreateTab("Move")
+local Speed = MoveTab:CreateSection("Speed")
+
+Speed:CreateSlider("WalkSpeed", 16, 200, 16, function(v)
+	local char = game.Players.LocalPlayer.Character
+	if char and char:FindFirstChildOfClass("Humanoid") then
+		char:FindFirstChildOfClass("Humanoid").WalkSpeed = v
+	end
+	Window.Flags.WalkSpeed = v
+end)
+
+Speed:CreateSlider("JumpPower", 50, 500, 50, function(v)
+	local char = game.Players.LocalPlayer.Character
+	if char and char:FindFirstChildOfClass("Humanoid") then
+		char:FindFirstChildOfClass("Humanoid").JumpPower = v
+	end
+	Window.Flags.JumpPower = v
+end)
+
+Speed:CreateToggle("Infinite Jump", false, function(state)
+	getgenv().InfJump = state
+	Window.Flags.InfJump = state
+end)
+
+Speed:CreateToggle("Fly", false, function(state)
+	Window.Flags.Fly = state
+end)
+
+game:GetService("UserInputService").JumpRequest:Connect(function()
+	if getgenv().InfJump then
+		local char = game.Players.LocalPlayer.Character
+		if char and char:FindFirstChildOfClass("Humanoid") then
+			char:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+		end
+	end
+end)
+
+-- ======================
+-- TAB: ACTIONS
+-- ======================
+
+local ActTab = Window:CreateTab("Actions")
+local Quick = ActTab:CreateSection("Quick Actions")
+
+Quick:CreateButton("Refresh Target", function()
+	TomPearl:Notify({
+		Title = "Target",
+		Content = "Target refreshed",
+		Duration = 2,
+		Type = "info",
+	})
+end)
+
+Quick:CreateButton("Rejoin Server", function()
+	game:GetService("TeleportService"):Teleport(game.PlaceId, game.Players.LocalPlayer)
+end)
+
+Quick:CreateButton("Panic — Disable All", function()
 	TomPearl:Notify({
 		Title = "Panic",
 		Content = "All functions disabled",
@@ -78,71 +141,78 @@ Actions:CreateButton("Panic (Disable All)", function()
 end)
 
 -- ======================
--- TAB: MISC
+-- TAB: SETTINGS
 -- ======================
 
-local MiscTab = Window:CreateTab("Misc")
+local SetTab = Window:CreateTab("Settings")
+local Gen = SetTab:CreateSection("General")
 
-local PlayerSection = MiscTab:CreateSection("Player")
-
-PlayerSection:CreateSlider("WalkSpeed", 16, 200, 16, function(v)
-	-- game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = v
-	print("[Example] WalkSpeed:", v)
+Gen:CreateToggle("Sounds", true, function(state)
+	TomPearl:SetSoundEnabled(state)
+	Window.Flags.Sounds = state
 end)
 
-PlayerSection:CreateSlider("JumpPower", 50, 500, 50, function(v)
-	print("[Example] JumpPower:", v)
+Gen:CreateToggle("Notifications", true, function(state)
+	Window.Flags.Notifications = state
 end)
 
-PlayerSection:CreateToggle("Infinite Jump", false, function(state)
-	print("[Example] InfJump:", state)
-end)
-
-local Settings = MiscTab:CreateSection("Settings")
-
-Settings:CreateInput("Nickname", "type your name...", function(text)
-	print("[Example] Input:", text)
-end)
-
-Settings:CreateKeybind("Toggle UI", Enum.KeyCode.P, function()
+Gen:CreateKeybind("Toggle UI", Enum.KeyCode.P, function()
 	Window:Toggle()
 end)
 
-Settings:CreateLabel("Tom Pearl Menu v1.0.0")
-Settings:CreateDivider()
-Settings:CreateLabel("github.com/ТВОЙ_НИК/tompearl")
+Gen:CreateInput("Nickname", "type your name...", function(text)
+	Window.Flags.Nickname = text
+	print("[Example] Nickname:", text)
+end)
+
+Gen:CreateDropdown("Theme", {"Dark Blue", "Purple", "Red", "Green"}, "Dark Blue", function(v)
+	Window.Flags.Theme = v
+end)
+
+local ConfigSec = SetTab:CreateSection("Config")
+
+ConfigSec:CreateInput("Config name", "config.json", function(text)
+	getgenv().ConfigName = text
+end)
+
+ConfigSec:CreateButton("Save Config", function()
+	Window:SaveConfig(getgenv().ConfigName or "tompearl_config.json")
+end)
+
+ConfigSec:CreateButton("Load Config", function()
+	Window:LoadConfig(getgenv().ConfigName or "tompearl_config.json")
+end)
 
 -- ======================
 -- TAB: ABOUT
 -- ======================
 
 local AboutTab = Window:CreateTab("About")
-local About = AboutTab:CreateSection("Info")
+local Info = AboutTab:CreateSection("Info")
 
-About:CreateLabel("Tom Pearl Menu")
-About:CreateLabel("Version 1.0.0")
-About:CreateDivider()
-About:CreateLabel("Press RCTRL to toggle window")
-About:CreateLabel("Click the icon at top to open menu")
+Info:CreateLabel("Tom Pearl Menu")
+Info:CreateLabel("Version 1.3.0 (slide animation)")
+Info:CreateDivider()
+Info:CreateLabel("Tap icon at top to open/close the menu")
+Info:CreateLabel("Window slides up from bottom on open")
+Info:CreateLabel("Window slides down off-screen on close")
+Info:CreateLabel("Drag window by title bar")
+Info:CreateLabel("Resize from bottom-right corner")
+Info:CreateLabel("RightControl toggles, Escape closes")
+Info:CreateDivider()
+Info:CreateLabel("github.com/WareSploit/tompearl")
 
-About:CreateButton("Show notification", function()
+Info:CreateButton("Show notification", function()
 	TomPearl:Notify({
 		Title = "Hello",
-		Content = "This is Tom Pearl Menu",
+		Content = "Tom Pearl Menu is running",
 		Duration = 3,
 		Type = "success",
 	})
 end)
 
 -- ======================
--- WELCOME
+-- DONE
 -- ======================
 
-TomPearl:Notify({
-	Title = "Tom Pearl Menu",
-	Content = "Загружено успешно",
-	Duration = 3,
-	Type = "success",
-})
-
-print("[TomPearl] example.lua executed")
+print("[TomPearl] example.lua v1.3.0 executed | mobile=" .. tostring(IS_MOBILE))
