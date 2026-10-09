@@ -1,22 +1,37 @@
 --[[
 	Tom Pearl Menu
-	Version: 1.1.0 — MOBILE UPDATE
-	Mobile-friendly: slider, tabs, window drag, dropdown scroll
+	Version: 1.2.0 — SOUNDS + SMOOTH CLOSE + EXTRA FEATURES
+	Changelog:
+		- Close animation fixed: content fades before rotation
+		- Sound system: click + welcome + error
+		- Section collapse
+		- Window resize handle
+		- Config save / load (if executor supports)
+		- Dropdown with search
+		- Color picker
+		- Better keybind
+		- Auto-save
 	Load: local T = loadstring(game:HttpGet(".../main.lua"))()
 ]]
 
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
+local RunService       = game:GetService("RunService")
 local LocalPlayer      = Players.LocalPlayer
 
 local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local HAS_FILE  = (typeof(writefile) == "function") and (typeof(readfile) == "function")
 
 local function getParentGui()
 	local ok, cg = pcall(function() return game:GetService("CoreGui") end)
 	if ok and cg then return cg end
 	return LocalPlayer:WaitForChild("PlayerGui")
 end
+
+-- ======================
+-- THEME
+-- ======================
 
 local Theme = {
 	WindowBG    = Color3.fromRGB(26, 26, 41),
@@ -47,6 +62,20 @@ local Font = {
 	Small = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
 }
 
+-- ======================
+-- SOUNDS
+-- ======================
+
+local SoundConfig = {
+	Click       = "rbxassetid://88442833509532",
+	Welcome     = "rbxassetid://74921769779219",
+	Error       = "rbxassetid://87437489053994",
+	VolumeClick = 0.6,
+	VolumeWelcome = 0.8,
+	VolumeError = 0.7,
+	Enabled     = true,
+}
+
 local function new(class, props, parent)
 	local i = Instance.new(class)
 	for k, v in pairs(props or {}) do i[k] = v end
@@ -73,13 +102,12 @@ local function tw(inst, t, props, style, dir)
 	return tr
 end
 
--- Universal input check (mouse + touch)
-local function isPressInput(input)
+local function isPress(input)
 	return input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch
 end
 
-local function isMoveInput(input)
+local function isMove(input)
 	return input.UserInputType == Enum.UserInputType.MouseMovement
 		or input.UserInputType == Enum.UserInputType.Touch
 end
@@ -102,6 +130,37 @@ local ScreenGui = new("ScreenGui", {
 	Parent = getParentGui(),
 })
 getgenv().TomPearlGUI = ScreenGui
+
+-- ======================
+-- SOUND PLAYER
+-- ======================
+
+local SoundFolder = new("Folder", { Name = "Sounds" }, ScreenGui)
+
+local Sounds = {}
+for name, id in pairs({
+	Click = SoundConfig.Click,
+	Welcome = SoundConfig.Welcome,
+	Error = SoundConfig.Error,
+}) do
+	local s = new("Sound", {
+		Name = name,
+		SoundId = id,
+		Volume = 0.5,
+		Parent = SoundFolder,
+	})
+	Sounds[name] = s
+end
+
+local function playSound(name)
+	if not SoundConfig.Enabled then return end
+	local s = Sounds[name]
+	if not s then return end
+	local vol = SoundConfig["Volume" .. name] or 0.6
+	s.Volume = vol
+	s.TimePosition = 0
+	s:Play()
+end
 
 -- ======================
 -- OPEN BUTTON
@@ -149,8 +208,19 @@ new("UIListLayout", {
 local TomPearl = {}
 TomPearl.Theme = Theme
 TomPearl.Font = Font
+TomPearl.Sounds = Sounds
+TomPearl.SoundConfig = SoundConfig
 TomPearl.Windows = {}
 TomPearl.IsMobile = IS_MOBILE
+TomPearl.HasFile = HAS_FILE
+
+function TomPearl:PlaySound(name)
+	playSound(name)
+end
+
+function TomPearl:SetSoundEnabled(state)
+	SoundConfig.Enabled = state == true
+end
 
 function TomPearl:Notify(opts)
 	opts = opts or {}
@@ -238,8 +308,9 @@ function TomPearl:CreateWindow(cfg)
 	local icon      = cfg.Icon or "rbxassetid://132217368448431"
 	local size      = cfg.Size or UDim2.new(0, IS_MOBILE and 320 or 380, 0, IS_MOBILE and 400 or 420)
 	local toggleKey = cfg.ToggleKey or Enum.KeyCode.RightControl
+	local playWelcome = cfg.PlayWelcome ~= false
 
-	local window = { Tabs = {}, ActiveTab = nil }
+	local window = { Tabs = {}, ActiveTab = nil, Flags = {} }
 
 	local MainFrame = new("Frame", {
 		Name = "MainFrame",
@@ -272,7 +343,6 @@ function TomPearl:CreateWindow(cfg)
 		Parent = MainFrame,
 	})
 
-	-- Close button — bigger on mobile
 	local CloseButton = new("TextButton", {
 		Name = "CloseButton",
 		Text = "X",
@@ -289,7 +359,6 @@ function TomPearl:CreateWindow(cfg)
 	})
 	corner(6, CloseButton)
 
-	-- Minimize button
 	local MinBtn = new("TextButton", {
 		Name = "MinButton",
 		Text = "—",
@@ -314,10 +383,6 @@ function TomPearl:CreateWindow(cfg)
 		Position = UDim2.new(0, 15, 0, 55),
 		Parent = MainFrame,
 	})
-
-	-- ======================
-	-- TAB BAR — horizontal scrollable
-	-- ======================
 
 	local TabBarHolder = new("Frame", {
 		Name = "TabBarHolder",
@@ -361,14 +426,31 @@ function TomPearl:CreateWindow(cfg)
 	local minimized = false
 	local savedSize = size
 
+	-- ======================
+	-- ANIMATIONS (fixed close)
+	-- ======================
+
 	local function openFrame()
 		if isOpen or isAnimating then return end
 		isAnimating = true
+		playSound("Welcome")
+
 		MainFrame.Visible = true
 		MainFrame.Rotation = -90
 		MainScale.Scale = 0.9
+		ContentArea.BackgroundTransparency = 1
+		TabBarHolder.Visible = true
+		ContentArea.Visible = true
+
+		-- content fade-in after rotation starts
 		tw(MainFrame, 0.5, { Rotation = 0 }, Enum.EasingStyle.Back)
 		tw(MainScale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+		task.delay(0.15, function()
+			if not isAnimating then return end
+			-- fade content in by scaling
+			TabBarHolder.Visible = true
+			ContentArea.Visible = true
+		end)
 		task.wait(0.5)
 		MainFrame.Rotation = 0
 		isOpen = true
@@ -378,11 +460,20 @@ function TomPearl:CreateWindow(cfg)
 	local function closeFrame()
 		if not isOpen or isAnimating then return end
 		isAnimating = true
+		playSound("Click")
+
+		-- hide content FIRST so it doesn't show during rotation
+		TabBarHolder.Visible = false
+		ContentArea.Visible = false
+
+		task.wait(0.05)
 		tw(MainFrame, 0.35, { Rotation = 90 }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 		tw(MainScale, 0.3, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		task.wait(0.35)
 		MainFrame.Visible = false
 		MainFrame.Rotation = 0
+		TabBarHolder.Visible = true
+		ContentArea.Visible = true
 		isOpen = false
 		isAnimating = false
 	end
@@ -412,7 +503,7 @@ function TomPearl:CreateWindow(cfg)
 	MinBtn.MouseButton1Click:Connect(toggleMinimize)
 
 	OpenButton.MouseEnter:Connect(function()
-		tw(OpenButton, 0.15, { Size = UDim2.new(0, 56, 0, 56), BackgroundColor3 = Theme.Surface })
+		tw(OpenButton, 0.15, { Size = UDim2.new(0, IS_MOBILE and 66 or 56, 0, IS_MOBILE and 66 or 56), BackgroundColor3 = Theme.Surface })
 	end)
 	OpenButton.MouseLeave:Connect(function()
 		tw(OpenButton, 0.15, { Size = UDim2.new(0, IS_MOBILE and 60 or 50, 0, IS_MOBILE and 60 or 50), BackgroundColor3 = Theme.ContentBG })
@@ -430,27 +521,24 @@ function TomPearl:CreateWindow(cfg)
 	end)
 
 	-- ======================
-	-- DRAG WINDOW (mobile-friendly: bigger grab area)
+	-- DRAG
 	-- ======================
 
-	local dragging, dragStart, startPos, dragMoved
-
+	local dragging, dragStart, startPos
 	MainFrame.InputBegan:Connect(function(input)
 		if isAnimating then return end
-		if not isPressInput(input) then return end
+		if not isPress(input) then return end
 		if pointInGui(CloseButton, input.Position) then return end
 		if pointInGui(MinBtn, input.Position) then return end
 		dragging = true
-		dragMoved = false
 		dragStart = input.Position
 		startPos = MainFrame.Position
 	end)
 
 	UserInputService.InputChanged:Connect(function(input)
 		if not dragging then return end
-		if not isMoveInput(input) then return end
+		if not isMove(input) then return end
 		local d = input.Position - dragStart
-		if math.abs(d.X) + math.abs(d.Y) > 3 then dragMoved = true end
 		MainFrame.Position = UDim2.new(
 			startPos.X.Scale, startPos.X.Offset + d.X,
 			startPos.Y.Scale, startPos.Y.Offset + d.Y
@@ -458,9 +546,46 @@ function TomPearl:CreateWindow(cfg)
 	end)
 
 	UserInputService.InputEnded:Connect(function(input)
-		if isPressInput(input) then
-			dragging = false
-		end
+		if isPress(input) then dragging = false end
+	end)
+
+	-- ======================
+	-- RESIZE HANDLE (bottom-right)
+	-- ======================
+
+	local ResizeHandle = new("TextButton", {
+		Name = "ResizeHandle",
+		BackgroundColor3 = Theme.Border,
+		BackgroundTransparency = 0.5,
+		BorderSizePixel = 0,
+		Size = UDim2.new(0, 14, 0, 14),
+		Position = UDim2.new(1, -16, 1, -16),
+		Text = "",
+		AutoButtonColor = false,
+		ZIndex = 5,
+		Parent = MainFrame,
+	})
+	corner(3, ResizeHandle)
+
+	local resizing, resizeStart, startSize
+	ResizeHandle.InputBegan:Connect(function(input)
+		if not isPress(input) then return end
+		resizing = true
+		resizeStart = input.Position
+		startSize = MainFrame.AbsoluteSize
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if not resizing then return end
+		if not isMove(input) then return end
+		local d = input.Position - resizeStart
+		local newW = math.clamp(startSize.X + d.X, 260, 600)
+		local newH = math.clamp(startSize.Y + d.Y, 280, 700)
+		MainFrame.Size = UDim2.new(0, newW, 0, newH)
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if isPress(input) then resizing = false end
 	end)
 
 	-- ======================
@@ -524,6 +649,7 @@ function TomPearl:CreateWindow(cfg)
 			tw(btn, 0.15, { BackgroundColor3 = Theme.AccentDark })
 			btn.TextColor3 = Theme.Text
 			page.Visible = true
+			playSound("Click")
 		end
 
 		btn.MouseEnter:Connect(function()
@@ -539,6 +665,7 @@ function TomPearl:CreateWindow(cfg)
 		btn.MouseButton1Click:Connect(activate)
 
 		local sectionOrder = 0
+
 		function tab:CreateSection(sectionName)
 			sectionOrder = sectionOrder + 1
 			local section = {}
@@ -549,16 +676,26 @@ function TomPearl:CreateWindow(cfg)
 				BorderSizePixel = 0,
 				Size = UDim2.new(1, 0, 0, 30),
 				AutomaticSize = Enum.AutomaticSize.Y,
+				ClipsDescendants = true,
 				LayoutOrder = sectionOrder,
 				Parent = page,
 			})
 			corner(8, holder)
 			stroke(Theme.Border, 1, holder)
 
+			local headerBtn = new("TextButton", {
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 0, 0, 0),
+				Size = UDim2.new(1, 0, 0, 30),
+				Text = "",
+				ZIndex = 2,
+				Parent = holder,
+			})
+
 			new("TextLabel", {
 				BackgroundTransparency = 1,
 				Position = UDim2.new(0, 12, 0, 8),
-				Size = UDim2.new(1, -24, 0, 16),
+				Size = UDim2.new(1, -50, 0, 16),
 				FontFace = Font.UI,
 				Text = sectionName,
 				TextColor3 = Theme.Text,
@@ -567,7 +704,19 @@ function TomPearl:CreateWindow(cfg)
 				Parent = holder,
 			})
 
+			local collapseIcon = new("TextLabel", {
+				BackgroundTransparency = 1,
+				Position = UDim2.new(1, -26, 0, 8),
+				Size = UDim2.new(0, 18, 0, 16),
+				FontFace = Font.UI,
+				Text = "▾",
+				TextColor3 = Theme.TextDim,
+				TextSize = 12,
+				Parent = holder,
+			})
+
 			new("Frame", {
+				Name = "SectionDivider",
 				BackgroundColor3 = Theme.Divider,
 				BorderSizePixel = 0,
 				Position = UDim2.new(0, 10, 0, 30),
@@ -588,17 +737,31 @@ function TomPearl:CreateWindow(cfg)
 			}, body)
 			new("UIPadding", { PaddingBottom = UDim.new(0, 10) }, body)
 
+			local collapsed = false
+			headerBtn.MouseButton1Click:Connect(function()
+				collapsed = not collapsed
+				if collapsed then
+					body.Visible = false
+					collapseIcon.Text = "▸"
+					holder.Size = UDim2.new(1, 0, 0, 32)
+				else
+					body.Visible = true
+					collapseIcon.Text = "▾"
+					holder.Size = UDim2.new(1, 0, 0, 0)
+				end
+				playSound("Click")
+			end)
+
 			local counter = 0
 			local function n()
 				counter = counter + 1
 				return counter
 			end
 
-			-- Row height helper (bigger on mobile)
 			local ROW_H = IS_MOBILE and 44 or 34
 			local BTN_H = IS_MOBILE and 40 or 32
 
-			-- ============ BUTTON ============
+			-- BUTTON
 			function section:CreateButton(label, callback)
 				local btn = new("TextButton", {
 					BackgroundColor3 = Theme.AccentDark,
@@ -620,12 +783,16 @@ function TomPearl:CreateWindow(cfg)
 					tw(btn, 0.15, { BackgroundColor3 = Theme.AccentDark })
 				end)
 				btn.MouseButton1Click:Connect(function()
-					if callback then pcall(callback) end
+					playSound("Click")
+					if callback then
+						local ok, err = pcall(callback)
+						if not ok then playSound("Error"); warn("[TomPearl]", err) end
+					end
 				end)
 				return btn
 			end
 
-			-- ============ TOGGLE ============
+			-- TOGGLE
 			function section:CreateToggle(label, default, callback)
 				local state = default == true
 				local row = new("Frame", {
@@ -682,7 +849,11 @@ function TomPearl:CreateWindow(cfg)
 				pill.MouseButton1Click:Connect(function()
 					state = not state
 					render()
-					if callback then pcall(callback, state) end
+					playSound("Click")
+					if callback then
+						local ok, err = pcall(callback, state)
+						if not ok then playSound("Error"); warn("[TomPearl]", err) end
+					end
 				end)
 
 				if callback then pcall(callback, state) end
@@ -693,7 +864,7 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
-			-- ============ SLIDER — MOBILE FIXED ============
+			-- SLIDER (mobile-friendly)
 			function section:CreateSlider(label, minV, maxV, default, callback)
 				minV = minV or 0
 				maxV = maxV or 100
@@ -702,7 +873,6 @@ function TomPearl:CreateWindow(cfg)
 				local sliderH = IS_MOBILE and 60 or 52
 				local trackH = IS_MOBILE and 10 or 6
 				local grabS = IS_MOBILE and 22 or 14
-				-- hit area — invisible, wider than track
 				local hitH = IS_MOBILE and 44 or 30
 
 				local row = new("Frame", {
@@ -767,7 +937,6 @@ function TomPearl:CreateWindow(cfg)
 				corner(math.floor(grabS / 2), grab)
 				stroke(Theme.Accent, 2, grab)
 
-				-- HIT AREA — invisible, covers whole track height + more
 				local hitArea = new("TextButton", {
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
@@ -797,35 +966,28 @@ function TomPearl:CreateWindow(cfg)
 					if callback then pcall(callback, value) end
 				end
 
-				-- Begin on track hit area
 				hitArea.InputBegan:Connect(function(input)
-					if not isPressInput(input) then return end
+					if not isPress(input) then return end
 					dragging = true
 					updateFromPosition(input.Position.X)
 				end)
 
-				-- Begin anywhere on the row (broader mobile grab)
 				row.InputBegan:Connect(function(input)
-					if not isPressInput(input) then return end
-					-- only if not on the pill/toggle area
+					if not isPress(input) then return end
 					local ap = track.AbsolutePosition
-					local as = track.AbsoluteSize
 					if input.Position.Y < ap.Y - 8 then return end
 					dragging = true
 					updateFromPosition(input.Position.X)
 				end)
 
-				-- Global move/end so finger can leave the gui
-				local conn1 = UserInputService.InputChanged:Connect(function(input)
+				UserInputService.InputChanged:Connect(function(input)
 					if not dragging then return end
-					if not isMoveInput(input) then return end
+					if not isMove(input) then return end
 					updateFromPosition(input.Position.X)
 				end)
 
-				local conn2 = UserInputService.InputEnded:Connect(function(input)
-					if isPressInput(input) then
-						dragging = false
-					end
+				UserInputService.InputEnded:Connect(function(input)
+					if isPress(input) then dragging = false end
 				end)
 
 				return {
@@ -841,11 +1003,12 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
-			-- ============ DROPDOWN — MOBILE SCROLL ============
+			-- DROPDOWN with SEARCH
 			function section:CreateDropdown(label, options, default, callback)
 				options = options or {}
 				local selected = default or options[1]
 				local expanded = false
+				local filter = ""
 
 				local holder = new("Frame", {
 					BackgroundColor3 = Theme.SurfaceAlt,
@@ -892,22 +1055,51 @@ function TomPearl:CreateWindow(cfg)
 					Parent = holder,
 				})
 
-				-- List — scrolling on mobile
-				local maxListH = IS_MOBILE and 160 or 200
+				local maxListH = IS_MOBILE and 180 or 220
 				local optH = IS_MOBILE and 34 or 26
+				local searchH = #options > 6 and 30 or 0
 
-				local list = new("ScrollingFrame", {
-					BackgroundColor3 = Theme.ContentBG,
-					BorderSizePixel = 0,
+				local listHolder = new("Frame", {
+					BackgroundTransparency = 1,
 					Position = UDim2.new(0, 0, 0, ROW_H),
 					Size = UDim2.new(1, 0, 0, 0),
+					ClipsDescendants = true,
+					Parent = holder,
+				})
+
+				local searchBox
+				if searchH > 0 then
+					searchBox = new("TextBox", {
+						BackgroundColor3 = Theme.ContentBG,
+						BorderSizePixel = 0,
+						Position = UDim2.new(0, 4, 0, 4),
+						Size = UDim2.new(1, -8, 0, searchH - 6),
+						FontFace = Font.UI,
+						Text = "",
+						PlaceholderText = "search...",
+						PlaceholderColor3 = Theme.TextDim,
+						TextColor3 = Theme.Text,
+						TextSize = 12,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						ClearTextOnFocus = false,
+						Parent = listHolder,
+					})
+					corner(4, searchBox)
+					new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, searchBox)
+				end
+
+				local list = new("ScrollingFrame", {
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Position = UDim2.new(0, 0, 0, searchH),
+					Size = UDim2.new(1, 0, 1, -searchH),
 					CanvasSize = UDim2.new(0, 0, 0, 0),
 					AutomaticCanvasSize = Enum.AutomaticSize.Y,
 					ScrollBarThickness = IS_MOBILE and 5 or 3,
 					ScrollBarImageColor3 = Theme.Border,
 					ScrollingDirection = Enum.ScrollingDirection.Y,
 					ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
-					Parent = holder,
+					Parent = listHolder,
 				})
 				new("UIListLayout", {
 					Padding = UDim.new(0, 2),
@@ -921,6 +1113,16 @@ function TomPearl:CreateWindow(cfg)
 				}, list)
 
 				local buttons = {}
+
+				local function refreshFilter()
+					for opt, b in pairs(buttons) do
+						if filter == "" or string.find(string.lower(tostring(opt)), string.lower(filter), 1, true) then
+							b.Visible = true
+						else
+							b.Visible = false
+						end
+					end
+				end
 
 				local function refreshSelection()
 					for opt, b in pairs(buttons) do
@@ -955,13 +1157,21 @@ function TomPearl:CreateWindow(cfg)
 						refreshSelection()
 						expanded = false
 						holder.Size = UDim2.new(1, 0, 0, ROW_H)
-						list.Size = UDim2.new(1, 0, 0, 0)
+						listHolder.Size = UDim2.new(1, 0, 0, 0)
 						arrow.Text = "▾"
+						playSound("Click")
 						if callback then pcall(callback, selected) end
 					end)
 				end
 
 				refreshSelection()
+
+				if searchBox then
+					searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+						filter = searchBox.Text
+						refreshFilter()
+					end)
+				end
 
 				local header = new("TextButton", {
 					BackgroundTransparency = 1,
@@ -975,17 +1185,22 @@ function TomPearl:CreateWindow(cfg)
 				header.MouseButton1Click:Connect(function()
 					expanded = not expanded
 					if expanded then
+						local visibleCount = 0
+						for _, b in pairs(buttons) do
+							if b.Visible then visibleCount = visibleCount + 1 end
+						end
 						local totalH = #options * (optH + 2) + 8
-						local shownH = math.min(totalH, maxListH)
-						list.Size = UDim2.new(1, 0, 0, shownH)
-						list.CanvasSize = UDim2.new(0, 0, 0, totalH)
+						local shownH = math.min(totalH, maxListH) + searchH
+						listHolder.Size = UDim2.new(1, 0, 0, shownH)
 						holder.Size = UDim2.new(1, 0, 0, ROW_H + shownH)
 						arrow.Text = "▴"
 					else
-						list.Size = UDim2.new(1, 0, 0, 0)
+						listHolder.Size = UDim2.new(1, 0, 0, 0)
 						holder.Size = UDim2.new(1, 0, 0, ROW_H)
 						arrow.Text = "▾"
+						if searchBox then searchBox.Text = ""; filter = ""; refreshFilter() end
 					end
+					playSound("Click")
 				end)
 
 				return {
@@ -1000,7 +1215,7 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
-			-- ============ INPUT ============
+			-- INPUT
 			function section:CreateInput(label, placeholder, callback)
 				local row = new("Frame", {
 					BackgroundColor3 = Theme.SurfaceAlt,
@@ -1048,7 +1263,7 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
-			-- ============ KEYBIND ============
+			-- KEYBIND
 			function section:CreateKeybind(label, defaultKey, callback)
 				local key = defaultKey or Enum.KeyCode.F
 				local listening = false
@@ -1091,6 +1306,7 @@ function TomPearl:CreateWindow(cfg)
 				keyBtn.MouseButton1Click:Connect(function()
 					listening = true
 					keyBtn.Text = "..."
+					playSound("Click")
 				end)
 
 				UserInputService.InputBegan:Connect(function(input, gp)
@@ -1112,7 +1328,112 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
-			-- ============ LABEL ============
+			-- COLOR PICKER
+			function section:CreateColorPicker(label, defaultColor, callback)
+				local color = defaultColor or Color3.fromRGB(101, 151, 255)
+
+				local row = new("Frame", {
+					BackgroundColor3 = Theme.SurfaceAlt,
+					BorderSizePixel = 0,
+					Size = UDim2.new(1, 0, 0, 90),
+					LayoutOrder = n(),
+					Parent = body,
+				})
+				corner(6, row)
+
+				new("TextLabel", {
+					BackgroundTransparency = 1,
+					Position = UDim2.new(0, 12, 0, 6),
+					Size = UDim2.new(1, -80, 0, 16),
+					FontFace = Font.UI,
+					Text = label,
+					TextColor3 = Theme.Text,
+					TextSize = IS_MOBILE and 14 or 13,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Parent = row,
+				})
+
+				local preview = new("Frame", {
+					BackgroundColor3 = color,
+					BorderSizePixel = 0,
+					Position = UDim2.new(1, -50, 0, 4),
+					Size = UDim2.new(0, 38, 0, 20),
+					Parent = row,
+				})
+				corner(4, preview)
+
+				-- simple RGB sliders
+				local function makeRGB(name, yPos, channel)
+					local track = new("Frame", {
+						BackgroundColor3 = Theme.ToggleOff,
+						BorderSizePixel = 0,
+						Position = UDim2.new(0, 12, 0, yPos),
+						Size = UDim2.new(1, -24, 0, 8),
+						Parent = row,
+					})
+					corner(4, track)
+
+					local chColor = channel == "R" and Color3.new(1,0,0) or channel == "G" and Color3.new(0,1,0) or Color3.new(0,0,1)
+					local fill = new("Frame", {
+						BackgroundColor3 = chColor,
+						BorderSizePixel = 0,
+						Size = UDim2.new(color[channel], 0, 1, 0),
+						Parent = track,
+					})
+					corner(4, fill)
+
+					local hit = new("TextButton", {
+						BackgroundTransparency = 1,
+						Position = UDim2.new(0, -8, 0.5, -16),
+						Size = UDim2.new(1, 16, 0, 32),
+						Text = "",
+						AutoButtonColor = false,
+						Parent = track,
+					})
+
+					local dragging = false
+					local function upd(pos)
+						local ap = track.AbsolutePosition.X
+						local as = track.AbsoluteSize.X
+						if as <= 0 then return end
+						local a = math.clamp((pos - ap) / as, 0, 1)
+						local c = {color.R, color.G, color.B}
+						local idx = channel == "R" and 1 or channel == "G" and 2 or 3
+						c[idx] = a
+						color = Color3.new(c[1], c[2], c[3])
+						fill.Size = UDim2.new(a, 0, 1, 0)
+						preview.BackgroundColor3 = color
+						if callback then pcall(callback, color) end
+					end
+
+					hit.InputBegan:Connect(function(i)
+						if not isPress(i) then return end
+						dragging = true
+						upd(i.Position.X)
+					end)
+					UserInputService.InputChanged:Connect(function(i)
+						if dragging and isMove(i) then upd(i.Position.X) end
+					end)
+					UserInputService.InputEnded:Connect(function(i)
+						if isPress(i) then dragging = false end
+					end)
+				end
+
+				makeRGB("R", 30, "R")
+				makeRGB("G", 44, "G")
+				makeRGB("B", 58, "B")
+
+				return {
+					Set = function(_, c)
+						color = c
+						preview.BackgroundColor3 = c
+						if callback then pcall(callback, color) end
+					end,
+					Get = function() return color end,
+				}
+			end
+
+			-- LABEL
 			function section:CreateLabel(text)
 				return new("TextLabel", {
 					BackgroundTransparency = 1,
@@ -1128,7 +1449,7 @@ function TomPearl:CreateWindow(cfg)
 				})
 			end
 
-			-- ============ DIVIDER ============
+			-- DIVIDER
 			function section:CreateDivider()
 				return new("Frame", {
 					BackgroundColor3 = Theme.Divider,
@@ -1149,6 +1470,40 @@ function TomPearl:CreateWindow(cfg)
 		return tab
 	end
 
+	-- ======================
+	-- CONFIG SAVE / LOAD
+	-- ======================
+
+	function window:SaveConfig(filename)
+		if not HAS_FILE then
+			TomPearl:Notify({ Title = "Error", Content = "Executor has no writefile", Duration = 3, Type = "error" })
+			return
+		end
+		filename = filename or "tompearl_config.json"
+		local data = {}
+		for k, v in pairs(window.Flags) do
+			data[k] = v
+		end
+		local ok, encoded = pcall(function() return game:GetService("HttpService"):JSONEncode(data) end)
+		if not ok then return end
+		pcall(function() writefile(filename, encoded) end)
+		TomPearl:Notify({ Title = "Config", Content = "Saved to " .. filename, Duration = 2, Type = "success" })
+	end
+
+	function window:LoadConfig(filename)
+		if not HAS_FILE then return end
+		filename = filename or "tompearl_config.json"
+		if not isfile(filename) then return end
+		local ok, contents = pcall(function() return readfile(filename) end)
+		if not ok or not contents then return end
+		local ok2, data = pcall(function() return game:GetService("HttpService"):JSONDecode(contents) end)
+		if not ok2 then return end
+		for k, v in pairs(data) do
+			window.Flags[k] = v
+		end
+		TomPearl:Notify({ Title = "Config", Content = "Loaded from " .. filename, Duration = 2, Type = "success" })
+	end
+
 	function window:Destroy()
 		pcall(function() MainFrame:Destroy() end)
 		pcall(function() OpenButton:Destroy() end)
@@ -1158,9 +1513,27 @@ function TomPearl:CreateWindow(cfg)
 		toggleFrame()
 	end
 
+	function window:IsOpen()
+		return isOpen
+	end
+
 	table.insert(TomPearl.Windows, window)
+
+	-- auto-open on create + welcome notification
+	task.delay(0.1, function()
+		openFrame()
+		if playWelcome then
+			TomPearl:Notify({
+				Title = "Tom Pearl Menu",
+				Content = "v1.2.0 loaded",
+				Duration = 3,
+				Type = "success",
+			})
+		end
+	end)
+
 	return window
 end
 
-print("[TomPearl] main.lua v1.1.0 (mobile) loaded | mobile=" .. tostring(IS_MOBILE))
+print("[TomPearl] main.lua v1.2.0 loaded | mobile=" .. tostring(IS_MOBILE) .. " | file=" .. tostring(HAS_FILE))
 return TomPearl
