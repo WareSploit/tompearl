@@ -8,7 +8,7 @@
 -- LOAD LIBRARY
 -- ======================
 
-local LIB_URL = "https://raw.githubusercontent.com/ТВОЙ_НИК/tompearl/main/main.lua"
+local LIB_URL = "https://raw.githubusercontent.com/WareSploit/tompearl/main/main.lua"
 
 local ok, TomPearl = pcall(function()
 	return loadstring(game:HttpGet(LIB_URL))()
