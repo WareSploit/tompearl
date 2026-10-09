@@ -1,7 +1,7 @@
 --[[
 	Tom Pearl Menu
-	Version: 1.0.0
-	Library: dark navy + blue accents
+	Version: 1.1.0 — MOBILE UPDATE
+	Mobile-friendly: slider, tabs, window drag, dropdown scroll
 	Load: local T = loadstring(game:HttpGet(".../main.lua"))()
 ]]
 
@@ -9,6 +9,8 @@ local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
 local LocalPlayer      = Players.LocalPlayer
+
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 
 local function getParentGui()
 	local ok, cg = pcall(function() return game:GetService("CoreGui") end)
@@ -71,6 +73,24 @@ local function tw(inst, t, props, style, dir)
 	return tr
 end
 
+-- Universal input check (mouse + touch)
+local function isPressInput(input)
+	return input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch
+end
+
+local function isMoveInput(input)
+	return input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch
+end
+
+local function pointInGui(gui, pos)
+	local ap = gui.AbsolutePosition
+	local as = gui.AbsoluteSize
+	return pos.X >= ap.X and pos.X <= ap.X + as.X
+		and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
+end
+
 if getgenv().TomPearlGUI then pcall(function() getgenv().TomPearlGUI:Destroy() end) end
 
 local ScreenGui = new("ScreenGui", {
@@ -83,6 +103,10 @@ local ScreenGui = new("ScreenGui", {
 })
 getgenv().TomPearlGUI = ScreenGui
 
+-- ======================
+-- OPEN BUTTON
+-- ======================
+
 local OpenButton = new("ImageButton", {
 	Name = "OpenButton",
 	BorderSizePixel = 0,
@@ -91,19 +115,23 @@ local OpenButton = new("ImageButton", {
 	ZIndex = 100,
 	AnchorPoint = Vector2.new(0.5, 0),
 	Image = "rbxassetid://132217368448431",
-	Size = UDim2.new(0, 50, 0, 50),
+	Size = UDim2.new(0, IS_MOBILE and 60 or 50, 0, IS_MOBILE and 60 or 50),
 	Position = UDim2.new(0.5, 0, 0, 10),
 	Parent = ScreenGui,
 })
-corner(25, OpenButton)
+corner(30, OpenButton)
 stroke(Theme.Accent, 2, OpenButton)
+
+-- ======================
+-- NOTIFICATIONS
+-- ======================
 
 local NotifyContainer = new("Frame", {
 	Name = "Notifications",
 	BackgroundTransparency = 1,
 	AnchorPoint = Vector2.new(1, 1),
 	Position = UDim2.new(1, -16, 1, -16),
-	Size = UDim2.new(0, 300, 1, -32),
+	Size = UDim2.new(0, IS_MOBILE and 240 or 300, 1, -32),
 	Parent = ScreenGui,
 })
 new("UIListLayout", {
@@ -114,10 +142,15 @@ new("UIListLayout", {
 	Padding = UDim.new(0, 8),
 }, NotifyContainer)
 
+-- ======================
+-- LIBRARY
+-- ======================
+
 local TomPearl = {}
 TomPearl.Theme = Theme
 TomPearl.Font = Font
 TomPearl.Windows = {}
+TomPearl.IsMobile = IS_MOBILE
 
 function TomPearl:Notify(opts)
 	opts = opts or {}
@@ -195,11 +228,15 @@ function TomPearl:Notify(opts)
 	return card
 end
 
+-- ======================
+-- WINDOW
+-- ======================
+
 function TomPearl:CreateWindow(cfg)
 	cfg = cfg or {}
 	local name      = cfg.Name or "Tom Pearl Menu"
-	local icon      = cfg.Icon or "rbxassetid://5607058200"
-	local size      = cfg.Size or UDim2.new(0, 380, 0, 420)
+	local icon      = cfg.Icon or "rbxassetid://132217368448431"
+	local size      = cfg.Size or UDim2.new(0, IS_MOBILE and 320 or 380, 0, IS_MOBILE and 400 or 420)
 	local toggleKey = cfg.ToggleKey or Enum.KeyCode.RightControl
 
 	local window = { Tabs = {}, ActiveTab = nil }
@@ -211,10 +248,10 @@ function TomPearl:CreateWindow(cfg)
 		BorderSizePixel = 0,
 		BackgroundColor3 = Theme.WindowBG,
 		BackgroundTransparency = 0.05,
-		AnchorPoint = Vector2.new(0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
 		ClipsDescendants = true,
 		Size = size,
-		Position = UDim2.new(0.5, 0, 0.15, 70),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Parent = ScreenGui,
 	})
 	corner(10, MainFrame)
@@ -225,41 +262,49 @@ function TomPearl:CreateWindow(cfg)
 	local Title = new("TextLabel", {
 		Name = "Title",
 		BackgroundTransparency = 1,
-		TextSize = 20,
+		TextSize = IS_MOBILE and 18 or 20,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		FontFace = Font.Title,
 		TextColor3 = Theme.Text,
-		Size = UDim2.new(1, -60, 0, 40),
+		Size = UDim2.new(1, -100, 0, 40),
 		Position = UDim2.new(0, 20, 0, 10),
 		Text = name,
 		Parent = MainFrame,
 	})
 
-	new("ImageLabel", {
-		Name = "icon",
-		BackgroundTransparency = 1,
-		Image = icon,
-		Size = UDim2.new(0, 30, 0, 30),
-		Position = UDim2.new(1, -170, 0, 15),
-		Parent = MainFrame,
-	})
-
+	-- Close button — bigger on mobile
 	local CloseButton = new("TextButton", {
 		Name = "CloseButton",
 		Text = "X",
-		TextSize = 18,
-		TextWrapped = true,
+		TextSize = IS_MOBILE and 20 or 18,
 		AutoButtonColor = false,
 		TextColor3 = Theme.Text,
 		BackgroundColor3 = Theme.Close,
 		BackgroundTransparency = 1,
 		FontFace = Font.UI,
 		BorderSizePixel = 0,
-		Size = UDim2.new(0, 40, 0, 40),
-		Position = UDim2.new(1, -45, 0, 10),
+		Size = UDim2.new(0, IS_MOBILE and 44 or 40, 0, IS_MOBILE and 44 or 40),
+		Position = UDim2.new(1, -50, 0, 8),
 		Parent = MainFrame,
 	})
 	corner(6, CloseButton)
+
+	-- Minimize button
+	local MinBtn = new("TextButton", {
+		Name = "MinButton",
+		Text = "—",
+		TextSize = IS_MOBILE and 20 or 18,
+		AutoButtonColor = false,
+		TextColor3 = Theme.Text,
+		BackgroundColor3 = Theme.Surface,
+		BackgroundTransparency = 0.6,
+		FontFace = Font.UI,
+		BorderSizePixel = 0,
+		Size = UDim2.new(0, IS_MOBILE and 44 or 40, 0, IS_MOBILE and 44 or 40),
+		Position = UDim2.new(1, -100, 0, 8),
+		Parent = MainFrame,
+	})
+	corner(6, MinBtn)
 
 	new("Frame", {
 		Name = "Divider",
@@ -270,12 +315,30 @@ function TomPearl:CreateWindow(cfg)
 		Parent = MainFrame,
 	})
 
-	local TabBar = new("Frame", {
+	-- ======================
+	-- TAB BAR — horizontal scrollable
+	-- ======================
+
+	local TabBarHolder = new("Frame", {
+		Name = "TabBarHolder",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -30, 0, 34),
+		Position = UDim2.new(0, 15, 0, 62),
+		ClipsDescendants = true,
+		Parent = MainFrame,
+	})
+
+	local TabBar = new("ScrollingFrame", {
 		Name = "TabBar",
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -30, 0, 28),
-		Position = UDim2.new(0, 15, 0, 62),
-		Parent = MainFrame,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 1, 0),
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.X,
+		ScrollBarThickness = 0,
+		ScrollingDirection = Enum.ScrollingDirection.X,
+		ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
+		Parent = TabBarHolder,
 	})
 	new("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
@@ -295,6 +358,8 @@ function TomPearl:CreateWindow(cfg)
 	local tabOrder = 0
 	local isOpen = false
 	local isAnimating = false
+	local minimized = false
+	local savedSize = size
 
 	local function openFrame()
 		if isOpen or isAnimating then return end
@@ -326,14 +391,31 @@ function TomPearl:CreateWindow(cfg)
 		if isOpen then closeFrame() else openFrame() end
 	end
 
+	local function toggleMinimize()
+		minimized = not minimized
+		if minimized then
+			savedSize = MainFrame.Size
+			tw(MainFrame, 0.25, { Size = UDim2.new(savedSize.X.Scale, savedSize.X.Offset, 0, 60) })
+			ContentArea.Visible = false
+			TabBarHolder.Visible = false
+			MinBtn.Text = "+"
+		else
+			tw(MainFrame, 0.25, { Size = savedSize })
+			ContentArea.Visible = true
+			TabBarHolder.Visible = true
+			MinBtn.Text = "—"
+		end
+	end
+
 	OpenButton.MouseButton1Click:Connect(toggleFrame)
 	CloseButton.MouseButton1Click:Connect(closeFrame)
+	MinBtn.MouseButton1Click:Connect(toggleMinimize)
 
 	OpenButton.MouseEnter:Connect(function()
 		tw(OpenButton, 0.15, { Size = UDim2.new(0, 56, 0, 56), BackgroundColor3 = Theme.Surface })
 	end)
 	OpenButton.MouseLeave:Connect(function()
-		tw(OpenButton, 0.15, { Size = UDim2.new(0, 50, 0, 50), BackgroundColor3 = Theme.ContentBG })
+		tw(OpenButton, 0.15, { Size = UDim2.new(0, IS_MOBILE and 60 or 50, 0, IS_MOBILE and 60 or 50), BackgroundColor3 = Theme.ContentBG })
 	end)
 	CloseButton.MouseEnter:Connect(function()
 		tw(CloseButton, 0.15, { BackgroundTransparency = 0, BackgroundColor3 = Theme.Close })
@@ -347,39 +429,43 @@ function TomPearl:CreateWindow(cfg)
 		if input.KeyCode == toggleKey then toggleFrame() end
 	end)
 
-	local dragging, dragStart, startPos
+	-- ======================
+	-- DRAG WINDOW (mobile-friendly: bigger grab area)
+	-- ======================
+
+	local dragging, dragStart, startPos, dragMoved
+
 	MainFrame.InputBegan:Connect(function(input)
 		if isAnimating then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			local pos = input.Position
-			local abs = CloseButton.AbsolutePosition
-			local sz = CloseButton.AbsoluteSize
-			if pos.X >= abs.X and pos.X <= abs.X + sz.X and pos.Y >= abs.Y and pos.Y <= abs.Y + sz.Y then
-				return
-			end
-			dragging = true
-			dragStart = input.Position
-			startPos = MainFrame.Position
-		end
+		if not isPressInput(input) then return end
+		if pointInGui(CloseButton, input.Position) then return end
+		if pointInGui(MinBtn, input.Position) then return end
+		dragging = true
+		dragMoved = false
+		dragStart = input.Position
+		startPos = MainFrame.Position
 	end)
+
 	UserInputService.InputChanged:Connect(function(input)
 		if not dragging then return end
-		if input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch then
-			local d = input.Position - dragStart
-			MainFrame.Position = UDim2.new(
-				startPos.X.Scale, startPos.X.Offset + d.X,
-				startPos.Y.Scale, startPos.Y.Offset + d.Y
-			)
-		end
+		if not isMoveInput(input) then return end
+		local d = input.Position - dragStart
+		if math.abs(d.X) + math.abs(d.Y) > 3 then dragMoved = true end
+		MainFrame.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + d.X,
+			startPos.Y.Scale, startPos.Y.Offset + d.Y
+		)
 	end)
+
 	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
+		if isPressInput(input) then
 			dragging = false
 		end
 	end)
+
+	-- ======================
+	-- TABS
+	-- ======================
 
 	function window:CreateTab(tabName)
 		tabOrder = tabOrder + 1
@@ -393,7 +479,7 @@ function TomPearl:CreateWindow(cfg)
 			AutomaticSize = Enum.AutomaticSize.X,
 			Text = tabName,
 			TextColor3 = Theme.TextDim,
-			TextSize = 13,
+			TextSize = IS_MOBILE and 14 or 13,
 			FontFace = Font.UI,
 			AutoButtonColor = false,
 			LayoutOrder = idx,
@@ -401,8 +487,8 @@ function TomPearl:CreateWindow(cfg)
 		})
 		corner(6, btn)
 		new("UIPadding", {
-			PaddingLeft = UDim.new(0, 12),
-			PaddingRight = UDim.new(0, 12),
+			PaddingLeft = UDim.new(0, 14),
+			PaddingRight = UDim.new(0, 14),
 		}, btn)
 
 		local page = new("ScrollingFrame", {
@@ -413,8 +499,10 @@ function TomPearl:CreateWindow(cfg)
 			Visible = false,
 			CanvasSize = UDim2.new(0, 0, 0, 0),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
-			ScrollBarThickness = 4,
+			ScrollBarThickness = IS_MOBILE and 6 or 4,
 			ScrollBarImageColor3 = Theme.Border,
+			ScrollingDirection = Enum.ScrollingDirection.Y,
+			ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
 			Parent = ContentArea,
 		})
 		new("UIListLayout", {
@@ -474,7 +562,7 @@ function TomPearl:CreateWindow(cfg)
 				FontFace = Font.UI,
 				Text = sectionName,
 				TextColor3 = Theme.Text,
-				TextSize = 13,
+				TextSize = IS_MOBILE and 14 or 13,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Parent = holder,
 			})
@@ -506,14 +594,19 @@ function TomPearl:CreateWindow(cfg)
 				return counter
 			end
 
+			-- Row height helper (bigger on mobile)
+			local ROW_H = IS_MOBILE and 44 or 34
+			local BTN_H = IS_MOBILE and 40 or 32
+
+			-- ============ BUTTON ============
 			function section:CreateButton(label, callback)
 				local btn = new("TextButton", {
 					BackgroundColor3 = Theme.AccentDark,
 					BorderSizePixel = 0,
-					Size = UDim2.new(1, 0, 0, 32),
+					Size = UDim2.new(1, 0, 0, BTN_H),
 					Text = label,
 					TextColor3 = Theme.Text,
-					TextSize = 14,
+					TextSize = IS_MOBILE and 15 or 14,
 					FontFace = Font.UI,
 					AutoButtonColor = false,
 					LayoutOrder = n(),
@@ -532,12 +625,13 @@ function TomPearl:CreateWindow(cfg)
 				return btn
 			end
 
+			-- ============ TOGGLE ============
 			function section:CreateToggle(label, default, callback)
 				local state = default == true
 				local row = new("Frame", {
 					BackgroundColor3 = Theme.SurfaceAlt,
 					BorderSizePixel = 0,
-					Size = UDim2.new(1, 0, 0, 34),
+					Size = UDim2.new(1, 0, 0, ROW_H),
 					LayoutOrder = n(),
 					Parent = body,
 				})
@@ -546,38 +640,43 @@ function TomPearl:CreateWindow(cfg)
 				new("TextLabel", {
 					BackgroundTransparency = 1,
 					Position = UDim2.new(0, 12, 0, 0),
-					Size = UDim2.new(1, -70, 1, 0),
+					Size = UDim2.new(1, -80, 1, 0),
 					FontFace = Font.UI,
 					Text = label,
 					TextColor3 = Theme.Text,
-					TextSize = 13,
+					TextSize = IS_MOBILE and 14 or 13,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					Parent = row,
 				})
 
+				local pillW = IS_MOBILE and 52 or 40
+				local pillH = IS_MOBILE and 26 or 20
+				local knobS = IS_MOBILE and 20 or 16
+				local knobPad = 3
+
 				local pill = new("TextButton", {
 					BackgroundColor3 = state and Theme.ToggleOn or Theme.ToggleOff,
 					BorderSizePixel = 0,
-					Position = UDim2.new(1, -50, 0.5, -10),
-					Size = UDim2.new(0, 40, 0, 20),
+					Position = UDim2.new(1, -(pillW + 10), 0.5, -pillH / 2),
+					Size = UDim2.new(0, pillW, 0, pillH),
 					Text = "",
 					AutoButtonColor = false,
 					Parent = row,
 				})
-				corner(10, pill)
+				corner(math.floor(pillH / 2), pill)
 
 				local knob = new("Frame", {
 					BackgroundColor3 = Color3.new(1, 1, 1),
 					BorderSizePixel = 0,
-					Position = state and UDim2.new(1, -20, 0, 2) or UDim2.new(0, 2, 0, 2),
-					Size = UDim2.new(0, 16, 0, 16),
+					Position = state and UDim2.new(1, -(knobS + knobPad), 0, knobPad) or UDim2.new(0, knobPad, 0, knobPad),
+					Size = UDim2.new(0, knobS, 0, knobS),
 					Parent = pill,
 				})
-				corner(8, knob)
+				corner(math.floor(knobS / 2), knob)
 
 				local function render()
 					tw(pill, 0.2, { BackgroundColor3 = state and Theme.ToggleOn or Theme.ToggleOff })
-					tw(knob, 0.2, { Position = state and UDim2.new(1, -20, 0, 2) or UDim2.new(0, 2, 0, 2) })
+					tw(knob, 0.2, { Position = state and UDim2.new(1, -(knobS + knobPad), 0, knobPad) or UDim2.new(0, knobPad, 0, knobPad) })
 				end
 
 				pill.MouseButton1Click:Connect(function()
@@ -594,15 +693,22 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
+			-- ============ SLIDER — MOBILE FIXED ============
 			function section:CreateSlider(label, minV, maxV, default, callback)
 				minV = minV or 0
 				maxV = maxV or 100
 				local value = default or minV
 
+				local sliderH = IS_MOBILE and 60 or 52
+				local trackH = IS_MOBILE and 10 or 6
+				local grabS = IS_MOBILE and 22 or 14
+				-- hit area — invisible, wider than track
+				local hitH = IS_MOBILE and 44 or 30
+
 				local row = new("Frame", {
 					BackgroundColor3 = Theme.SurfaceAlt,
 					BorderSizePixel = 0,
-					Size = UDim2.new(1, 0, 0, 48),
+					Size = UDim2.new(1, 0, 0, sliderH),
 					LayoutOrder = n(),
 					Parent = body,
 				})
@@ -611,23 +717,23 @@ function TomPearl:CreateWindow(cfg)
 				new("TextLabel", {
 					BackgroundTransparency = 1,
 					Position = UDim2.new(0, 12, 0, 6),
-					Size = UDim2.new(1, -70, 0, 16),
+					Size = UDim2.new(1, -80, 0, 18),
 					FontFace = Font.UI,
 					Text = label,
 					TextColor3 = Theme.Text,
-					TextSize = 13,
+					TextSize = IS_MOBILE and 14 or 13,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					Parent = row,
 				})
 
 				local valLbl = new("TextLabel", {
 					BackgroundTransparency = 1,
-					Position = UDim2.new(1, -70, 0, 6),
-					Size = UDim2.new(0, 58, 0, 16),
+					Position = UDim2.new(1, -80, 0, 6),
+					Size = UDim2.new(0, 68, 0, 18),
 					FontFace = Font.UI,
 					Text = tostring(value),
 					TextColor3 = Theme.Accent,
-					TextSize = 12,
+					TextSize = IS_MOBILE and 14 or 12,
 					TextXAlignment = Enum.TextXAlignment.Right,
 					Parent = row,
 				})
@@ -635,11 +741,11 @@ function TomPearl:CreateWindow(cfg)
 				local track = new("Frame", {
 					BackgroundColor3 = Theme.ToggleOff,
 					BorderSizePixel = 0,
-					Position = UDim2.new(0, 12, 0, 32),
-					Size = UDim2.new(1, -24, 0, 6),
+					Position = UDim2.new(0, 12, 0, sliderH - 20),
+					Size = UDim2.new(1, -24, 0, trackH),
 					Parent = row,
 				})
-				corner(3, track)
+				corner(math.floor(trackH / 2), track)
 
 				local fill = new("Frame", {
 					BackgroundColor3 = Theme.Accent,
@@ -647,48 +753,77 @@ function TomPearl:CreateWindow(cfg)
 					Size = UDim2.new((value - minV) / math.max(maxV - minV, 0.0001), 0, 1, 0),
 					Parent = track,
 				})
-				corner(3, fill)
+				corner(math.floor(trackH / 2), fill)
 
 				local grab = new("Frame", {
 					BackgroundColor3 = Color3.new(1, 1, 1),
 					BorderSizePixel = 0,
 					AnchorPoint = Vector2.new(0.5, 0.5),
 					Position = UDim2.new((value - minV) / math.max(maxV - minV, 0.0001), 0, 0.5, 0),
-					Size = UDim2.new(0, 12, 0, 12),
+					Size = UDim2.new(0, grabS, 0, grabS),
+					ZIndex = 2,
 					Parent = track,
 				})
-				corner(6, grab)
+				corner(math.floor(grabS / 2), grab)
 				stroke(Theme.Accent, 2, grab)
 
+				-- HIT AREA — invisible, covers whole track height + more
+				local hitArea = new("TextButton", {
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					Size = UDim2.new(1, 20, 0, hitH),
+					Position = UDim2.new(0, -10, 0.5, -hitH / 2),
+					Text = "",
+					AutoButtonColor = false,
+					ZIndex = 5,
+					Parent = track,
+				})
+
 				local dragging = false
-				local function updateFromInput(input)
+
+				local function updateFromPosition(posX)
 					local ap = track.AbsolutePosition.X
 					local as = track.AbsoluteSize.X
-					local alpha = math.clamp((input.Position.X - ap) / as, 0, 1)
+					if as <= 0 then return end
+					local alpha = math.clamp((posX - ap) / as, 0, 1)
 					value = minV + (maxV - minV) * alpha
 					fill.Size = UDim2.new(alpha, 0, 1, 0)
 					grab.Position = UDim2.new(alpha, 0, 0.5, 0)
-					valLbl.Text = string.format("%.2f", value):gsub("%.?0+$", "")
+					if value % 1 == 0 then
+						valLbl.Text = tostring(math.floor(value))
+					else
+						valLbl.Text = string.format("%.2f", value)
+					end
 					if callback then pcall(callback, value) end
 				end
 
-				track.InputBegan:Connect(function(input)
-					if input.UserInputType == Enum.UserInputType.MouseButton1
-						or input.UserInputType == Enum.UserInputType.Touch then
-						dragging = true
-						updateFromInput(input)
-					end
+				-- Begin on track hit area
+				hitArea.InputBegan:Connect(function(input)
+					if not isPressInput(input) then return end
+					dragging = true
+					updateFromPosition(input.Position.X)
 				end)
-				UserInputService.InputChanged:Connect(function(input)
+
+				-- Begin anywhere on the row (broader mobile grab)
+				row.InputBegan:Connect(function(input)
+					if not isPressInput(input) then return end
+					-- only if not on the pill/toggle area
+					local ap = track.AbsolutePosition
+					local as = track.AbsoluteSize
+					if input.Position.Y < ap.Y - 8 then return end
+					dragging = true
+					updateFromPosition(input.Position.X)
+				end)
+
+				-- Global move/end so finger can leave the gui
+				local conn1 = UserInputService.InputChanged:Connect(function(input)
 					if not dragging then return end
-					if input.UserInputType == Enum.UserInputType.MouseMovement
-						or input.UserInputType == Enum.UserInputType.Touch then
-						updateFromInput(input)
-					end
+					if not isMoveInput(input) then return end
+					updateFromPosition(input.Position.X)
 				end)
-				UserInputService.InputEnded:Connect(function(input)
-					if input.UserInputType == Enum.UserInputType.MouseButton1
-						or input.UserInputType == Enum.UserInputType.Touch then
+
+				local conn2 = UserInputService.InputEnded:Connect(function(input)
+					if isPressInput(input) then
 						dragging = false
 					end
 				end)
@@ -706,6 +841,7 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
+			-- ============ DROPDOWN — MOBILE SCROLL ============
 			function section:CreateDropdown(label, options, default, callback)
 				options = options or {}
 				local selected = default or options[1]
@@ -714,7 +850,7 @@ function TomPearl:CreateWindow(cfg)
 				local holder = new("Frame", {
 					BackgroundColor3 = Theme.SurfaceAlt,
 					BorderSizePixel = 0,
-					Size = UDim2.new(1, 0, 0, 34),
+					Size = UDim2.new(1, 0, 0, ROW_H),
 					ClipsDescendants = true,
 					LayoutOrder = n(),
 					Parent = body,
@@ -724,31 +860,31 @@ function TomPearl:CreateWindow(cfg)
 				new("TextLabel", {
 					BackgroundTransparency = 1,
 					Position = UDim2.new(0, 12, 0, 0),
-					Size = UDim2.new(1, -120, 0, 34),
+					Size = UDim2.new(1, -130, 0, ROW_H),
 					FontFace = Font.UI,
 					Text = label,
 					TextColor3 = Theme.Text,
-					TextSize = 13,
+					TextSize = IS_MOBILE and 14 or 13,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					Parent = holder,
 				})
 
 				local current = new("TextLabel", {
 					BackgroundTransparency = 1,
-					Position = UDim2.new(1, -112, 0, 0),
-					Size = UDim2.new(0, 90, 0, 34),
+					Position = UDim2.new(1, -122, 0, 0),
+					Size = UDim2.new(0, 96, 0, ROW_H),
 					FontFace = Font.UI,
 					Text = tostring(selected),
 					TextColor3 = Theme.Accent,
-					TextSize = 12,
+					TextSize = IS_MOBILE and 13 or 12,
 					TextXAlignment = Enum.TextXAlignment.Right,
 					Parent = holder,
 				})
 
 				local arrow = new("TextLabel", {
 					BackgroundTransparency = 1,
-					Position = UDim2.new(1, -22, 0, 0),
-					Size = UDim2.new(0, 16, 0, 34),
+					Position = UDim2.new(1, -24, 0, 0),
+					Size = UDim2.new(0, 18, 0, ROW_H),
 					FontFace = Font.UI,
 					Text = "▾",
 					TextColor3 = Theme.TextDim,
@@ -756,12 +892,21 @@ function TomPearl:CreateWindow(cfg)
 					Parent = holder,
 				})
 
-				local list = new("Frame", {
+				-- List — scrolling on mobile
+				local maxListH = IS_MOBILE and 160 or 200
+				local optH = IS_MOBILE and 34 or 26
+
+				local list = new("ScrollingFrame", {
 					BackgroundColor3 = Theme.ContentBG,
 					BorderSizePixel = 0,
-					Position = UDim2.new(0, 0, 0, 34),
+					Position = UDim2.new(0, 0, 0, ROW_H),
 					Size = UDim2.new(1, 0, 0, 0),
-					AutomaticSize = Enum.AutomaticSize.Y,
+					CanvasSize = UDim2.new(0, 0, 0, 0),
+					AutomaticCanvasSize = Enum.AutomaticSize.Y,
+					ScrollBarThickness = IS_MOBILE and 5 or 3,
+					ScrollBarImageColor3 = Theme.Border,
+					ScrollingDirection = Enum.ScrollingDirection.Y,
+					ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
 					Parent = holder,
 				})
 				new("UIListLayout", {
@@ -794,10 +939,10 @@ function TomPearl:CreateWindow(cfg)
 					local b = new("TextButton", {
 						BackgroundColor3 = Theme.Surface,
 						BorderSizePixel = 0,
-						Size = UDim2.new(1, 0, 0, 26),
+						Size = UDim2.new(1, 0, 0, optH),
 						Text = tostring(opt),
 						TextColor3 = Theme.Text,
-						TextSize = 12,
+						TextSize = IS_MOBILE and 14 or 12,
 						FontFace = Font.UI,
 						AutoButtonColor = false,
 						LayoutOrder = i,
@@ -809,7 +954,8 @@ function TomPearl:CreateWindow(cfg)
 						selected = opt
 						refreshSelection()
 						expanded = false
-						holder.Size = UDim2.new(1, 0, 0, 34)
+						holder.Size = UDim2.new(1, 0, 0, ROW_H)
+						list.Size = UDim2.new(1, 0, 0, 0)
 						arrow.Text = "▾"
 						if callback then pcall(callback, selected) end
 					end)
@@ -820,18 +966,24 @@ function TomPearl:CreateWindow(cfg)
 				local header = new("TextButton", {
 					BackgroundTransparency = 1,
 					Position = UDim2.new(0, 0, 0, 0),
-					Size = UDim2.new(1, 0, 0, 34),
+					Size = UDim2.new(1, 0, 0, ROW_H),
 					Text = "",
+					ZIndex = 2,
 					Parent = holder,
 				})
 
 				header.MouseButton1Click:Connect(function()
 					expanded = not expanded
 					if expanded then
-						holder.Size = UDim2.new(1, 0, 0, 34 + #options * 28 + 8)
+						local totalH = #options * (optH + 2) + 8
+						local shownH = math.min(totalH, maxListH)
+						list.Size = UDim2.new(1, 0, 0, shownH)
+						list.CanvasSize = UDim2.new(0, 0, 0, totalH)
+						holder.Size = UDim2.new(1, 0, 0, ROW_H + shownH)
 						arrow.Text = "▴"
 					else
-						holder.Size = UDim2.new(1, 0, 0, 34)
+						list.Size = UDim2.new(1, 0, 0, 0)
+						holder.Size = UDim2.new(1, 0, 0, ROW_H)
 						arrow.Text = "▾"
 					end
 				end)
@@ -848,11 +1000,12 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
+			-- ============ INPUT ============
 			function section:CreateInput(label, placeholder, callback)
 				local row = new("Frame", {
 					BackgroundColor3 = Theme.SurfaceAlt,
 					BorderSizePixel = 0,
-					Size = UDim2.new(1, 0, 0, 34),
+					Size = UDim2.new(1, 0, 0, ROW_H),
 					LayoutOrder = n(),
 					Parent = body,
 				})
@@ -865,7 +1018,7 @@ function TomPearl:CreateWindow(cfg)
 					FontFace = Font.UI,
 					Text = label,
 					TextColor3 = Theme.Text,
-					TextSize = 13,
+					TextSize = IS_MOBILE and 14 or 13,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					Parent = row,
 				})
@@ -879,7 +1032,7 @@ function TomPearl:CreateWindow(cfg)
 					PlaceholderText = placeholder or "type...",
 					PlaceholderColor3 = Theme.TextDim,
 					TextColor3 = Theme.Text,
-					TextSize = 13,
+					TextSize = IS_MOBILE and 14 or 13,
 					TextXAlignment = Enum.TextXAlignment.Right,
 					ClearTextOnFocus = false,
 					Parent = row,
@@ -895,6 +1048,7 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
+			-- ============ KEYBIND ============
 			function section:CreateKeybind(label, defaultKey, callback)
 				local key = defaultKey or Enum.KeyCode.F
 				local listening = false
@@ -902,7 +1056,7 @@ function TomPearl:CreateWindow(cfg)
 				local row = new("Frame", {
 					BackgroundColor3 = Theme.SurfaceAlt,
 					BorderSizePixel = 0,
-					Size = UDim2.new(1, 0, 0, 34),
+					Size = UDim2.new(1, 0, 0, ROW_H),
 					LayoutOrder = n(),
 					Parent = body,
 				})
@@ -915,7 +1069,7 @@ function TomPearl:CreateWindow(cfg)
 					FontFace = Font.UI,
 					Text = label,
 					TextColor3 = Theme.Text,
-					TextSize = 13,
+					TextSize = IS_MOBILE and 14 or 13,
 					TextXAlignment = Enum.TextXAlignment.Left,
 					Parent = row,
 				})
@@ -923,11 +1077,11 @@ function TomPearl:CreateWindow(cfg)
 				local keyBtn = new("TextButton", {
 					BackgroundColor3 = Theme.AccentDark,
 					BorderSizePixel = 0,
-					Position = UDim2.new(1, -76, 0.5, -10),
-					Size = UDim2.new(0, 64, 0, 20),
+					Position = UDim2.new(1, -84, 0.5, -12),
+					Size = UDim2.new(0, 72, 0, 24),
 					Text = key.Name,
 					TextColor3 = Theme.Text,
-					TextSize = 12,
+					TextSize = IS_MOBILE and 13 or 12,
 					FontFace = Font.UI,
 					AutoButtonColor = false,
 					Parent = row,
@@ -958,20 +1112,23 @@ function TomPearl:CreateWindow(cfg)
 				}
 			end
 
+			-- ============ LABEL ============
 			function section:CreateLabel(text)
 				return new("TextLabel", {
 					BackgroundTransparency = 1,
-					Size = UDim2.new(1, 0, 0, 20),
+					Size = UDim2.new(1, 0, 0, 22),
 					FontFace = Font.Small,
 					Text = text,
 					TextColor3 = Theme.TextDim,
-					TextSize = 12,
+					TextSize = IS_MOBILE and 13 or 12,
 					TextXAlignment = Enum.TextXAlignment.Left,
+					TextWrapped = true,
 					LayoutOrder = n(),
 					Parent = body,
 				})
 			end
 
+			-- ============ DIVIDER ============
 			function section:CreateDivider()
 				return new("Frame", {
 					BackgroundColor3 = Theme.Divider,
@@ -1005,5 +1162,5 @@ function TomPearl:CreateWindow(cfg)
 	return window
 end
 
-print("[TomPearl] main.lua loaded | v1.0.0")
+print("[TomPearl] main.lua v1.1.0 (mobile) loaded | mobile=" .. tostring(IS_MOBILE))
 return TomPearl
